@@ -13,6 +13,7 @@ local.properties
 *.class
 *.jar
 *.aar
+!gradle/wrapper/gradle-wrapper.jar
 
 # Android
 clients/android/build/
