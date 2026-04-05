@@ -4,6 +4,9 @@ import android.app.Application
 import com.wishlist.shared.di.initKoin
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import org.koin.core.context.loadKoinModules
+import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.dsl.module
 
 class WishlistApplication : Application() {
     override fun onCreate() {
@@ -12,6 +15,11 @@ class WishlistApplication : Application() {
             androidContext(this@WishlistApplication)
             androidLogger()
         }
+        loadKoinModules(appModule)
+    }
+
+    private val appModule = module {
+        viewModel { WishlistViewModel(get()) }
     }
 
     companion object {
