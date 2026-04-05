@@ -2,12 +2,6 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        NavigationStack {
-            WishlistListView()
-        }
+        NavigationStack { HomeView() }
     }
-}
-
-#Preview {
-    ContentView()
 }

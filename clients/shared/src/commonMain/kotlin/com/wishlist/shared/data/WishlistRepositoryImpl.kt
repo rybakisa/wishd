@@ -15,143 +15,142 @@ class WishlistRepositoryImpl(
     private val db: WishlistDatabase,
 ) : WishlistRepository {
 
-    private val wishlistQueries = db.wishlistQueries
+    private val q = db.wishlistQueries
 
-    override fun getWishlists(userId: String): Flow<List<Wishlist>> =
-        wishlistQueries.selectWishlistsByOwner(userId)
+    override fun observeWishlists(ownerId: String): Flow<List<Wishlist>> =
+        q.selectWishlistsByOwner(ownerId)
             .asFlow()
             .mapToList(Dispatchers.Default)
             .map { rows ->
                 rows.map { row ->
-                    val items = wishlistQueries.selectItemsByWishlist(row.id)
-                        .executeAsList()
-                        .map { it.toWishlistItem() }
-                    row.toWishlist(items)
+                    val items = q.selectItemsByWishlist(row.id).executeAsList().map { it.toDomain() }
+                    row.toDomain(items)
                 }
             }
 
     override suspend fun getWishlist(id: String): Wishlist? = withContext(Dispatchers.Default) {
-        wishlistQueries.selectWishlistById(id).executeAsOneOrNull()?.let { row ->
-            val items = wishlistQueries.selectItemsByWishlist(row.id)
-                .executeAsList()
-                .map { it.toWishlistItem() }
-            row.toWishlist(items)
+        q.selectWishlistById(id).executeAsOneOrNull()?.let { row ->
+            val items = q.selectItemsByWishlist(id).executeAsList().map { it.toDomain() }
+            row.toDomain(items)
         }
     }
 
-    override suspend fun createWishlist(wishlist: Wishlist): Wishlist = withContext(Dispatchers.Default) {
-        val created = api.createWishlist(wishlist)
+    override suspend fun createWishlist(
+        name: String, coverType: CoverType, coverValue: String?, access: Access,
+    ): Wishlist = withContext(Dispatchers.Default) {
+        val created = api.createWishlist(WishlistCreateRequest(name, coverType, coverValue, access))
         upsertWishlist(created)
         created
     }
 
-    override suspend fun updateWishlist(wishlist: Wishlist): Wishlist = withContext(Dispatchers.Default) {
-        val updated = api.updateWishlist(wishlist)
-        wishlistQueries.updateWishlist(
-            name = updated.name,
-            description = updated.description,
-            isPublic = if (updated.isPublic) 1L else 0L,
-            id = updated.id,
-        )
+    override suspend fun updateWishlist(
+        id: String, name: String?, coverType: CoverType?, coverValue: String?, access: Access?,
+    ): Wishlist = withContext(Dispatchers.Default) {
+        val updated = api.updateWishlist(id, WishlistUpdateRequest(name, coverType, coverValue, access))
+        upsertWishlist(updated)
         updated
     }
 
     override suspend fun deleteWishlist(id: String): Unit = withContext(Dispatchers.Default) {
         api.deleteWishlist(id)
-        wishlistQueries.deleteWishlist(id)
+        q.deleteWishlist(id)
     }
 
-    override suspend fun addItem(wishlistId: String, item: WishlistItem): WishlistItem =
+    override suspend fun createItem(wishlistId: String, req: ItemCreateRequest): WishlistItem =
         withContext(Dispatchers.Default) {
-            val created = api.addItem(wishlistId, item)
+            val created = api.createItem(wishlistId, req)
             upsertItem(created)
             created
         }
 
-    override suspend fun updateItem(item: WishlistItem): WishlistItem = withContext(Dispatchers.Default) {
-        val updated = api.updateItem(item)
-        wishlistQueries.updateItem(
-            name = updated.name,
-            description = updated.description,
-            url = updated.url,
-            imageUrl = updated.imageUrl,
-            price = updated.price,
-            currency = updated.currency,
-            isPurchased = if (updated.isPurchased) 1L else 0L,
-            id = updated.id,
-        )
-        updated
-    }
-
-    override suspend fun deleteItem(id: String): Unit = withContext(Dispatchers.Default) {
-        val item = wishlistQueries.selectItemById(id).executeAsOneOrNull()
-        if (item != null) {
-            api.deleteItem(item.wishlist_id, id)
-        }
-        wishlistQueries.deleteItem(id)
-    }
-
-    override suspend fun markItemPurchased(itemId: String, purchased: Boolean): Unit =
+    override suspend fun updateItem(wishlistId: String, itemId: String, req: ItemUpdateRequest): WishlistItem =
         withContext(Dispatchers.Default) {
-            val item = wishlistQueries.selectItemById(itemId).executeAsOneOrNull()
-                ?: return@withContext
-            val updated = item.toWishlistItem().copy(isPurchased = purchased)
-            api.updateItem(updated)
-            wishlistQueries.updateItemPurchased(
-                isPurchased = if (purchased) 1L else 0L,
-                id = itemId,
-            )
+            val updated = api.updateItem(wishlistId, itemId, req)
+            upsertItem(updated)
+            updated
         }
 
-    suspend fun refreshWishlists(userId: String) = withContext(Dispatchers.Default) {
-        val wishlists = api.getWishlists(userId)
-        wishlists.forEach { upsertWishlist(it) }
+    override suspend fun deleteItem(wishlistId: String, itemId: String): Unit =
+        withContext(Dispatchers.Default) {
+            api.deleteItem(wishlistId, itemId)
+            q.deleteItem(itemId)
+        }
+
+    override suspend fun refresh(ownerId: String): Unit = withContext(Dispatchers.Default) {
+        val remote = api.getWishlists()
+        q.transaction {
+            remote.forEach { w ->
+                q.insertOrReplaceWishlist(
+                    id = w.id, ownerId = w.ownerId, name = w.name,
+                    coverType = w.coverType.wire(), coverValue = w.coverValue,
+                    access = w.access.wire(), shareToken = w.shareToken,
+                    createdAt = w.createdAt ?: "",
+                )
+                q.deleteItemsForWishlist(w.id)
+                w.items.forEach { upsertItemNoTx(it) }
+            }
+        }
     }
 
-    private fun upsertWishlist(wishlist: Wishlist) {
-        wishlistQueries.insertOrReplaceWishlist(
-            id = wishlist.id,
-            name = wishlist.name,
-            description = wishlist.description,
-            ownerId = wishlist.ownerId,
-            isPublic = if (wishlist.isPublic) 1L else 0L,
-        )
-        wishlist.items.forEach { upsertItem(it) }
+    override suspend fun getShared(token: String): Wishlist = withContext(Dispatchers.Default) {
+        api.getShared(token)
+    }
+
+    override suspend fun parseProductUrl(url: String): ParsedProduct = withContext(Dispatchers.Default) {
+        api.parseUrl(url)
+    }
+
+    private fun upsertWishlist(w: Wishlist) {
+        q.transaction {
+            q.insertOrReplaceWishlist(
+                id = w.id, ownerId = w.ownerId, name = w.name,
+                coverType = w.coverType.wire(), coverValue = w.coverValue,
+                access = w.access.wire(), shareToken = w.shareToken,
+                createdAt = w.createdAt ?: "",
+            )
+            w.items.forEach { upsertItemNoTx(it) }
+        }
     }
 
     private fun upsertItem(item: WishlistItem) {
-        wishlistQueries.insertOrReplaceItem(
-            id = item.id,
-            wishlistId = item.wishlistId,
-            name = item.name,
-            description = item.description,
-            url = item.url,
-            imageUrl = item.imageUrl,
-            price = item.price,
-            currency = item.currency,
-            isPurchased = if (item.isPurchased) 1L else 0L,
+        q.transaction { upsertItemNoTx(item) }
+    }
+
+    private fun upsertItemNoTx(item: WishlistItem) {
+        q.insertOrReplaceItem(
+            id = item.id, wishlistId = item.wishlistId, name = item.name,
+            url = item.url, imageUrl = item.imageUrl, description = item.description,
+            price = item.price, currency = item.currency,
+            size = item.size, comment = item.comment,
+            sortOrder = item.sortOrder.toLong(),
+            createdAt = item.createdAt ?: "",
         )
     }
 }
 
-// Mapping extensions
-private fun com.wishlist.shared.storage.Wishlist.toWishlist(items: List<WishlistItem>) = Wishlist(
+private fun com.wishlist.shared.storage.Wishlist.toDomain(items: List<WishlistItem>) = Wishlist(
     id = id,
-    name = name,
-    description = description,
-    items = items,
     ownerId = owner_id,
-    isPublic = is_public != 0L,
+    name = name,
+    coverType = CoverType.fromWire(cover_type),
+    coverValue = cover_value,
+    access = Access.fromWire(access),
+    shareToken = share_token,
+    createdAt = created_at,
+    items = items,
 )
 
-private fun com.wishlist.shared.storage.Wishlist_item.toWishlistItem() = WishlistItem(
+private fun com.wishlist.shared.storage.Wishlist_item.toDomain() = WishlistItem(
     id = id,
     wishlistId = wishlist_id,
     name = name,
-    description = description,
     url = url,
     imageUrl = image_url,
+    description = description,
     price = price,
     currency = currency,
-    isPurchased = is_purchased != 0L,
+    size = size,
+    comment = comment,
+    sortOrder = sort_order.toInt(),
+    createdAt = created_at,
 )

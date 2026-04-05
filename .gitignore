@@ -7,34 +7,35 @@
 .env
 
 # Gradle
-.gradle/
-build/
-local.properties
+**/.gradle/
+**/build/
+**/local.properties
 *.class
 *.jar
 *.aar
-!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 
 # Android
-clients/android/build/
 clients/android/.cxx/
 
 # iOS
 clients/ios/Pods/
-clients/ios/build/
 clients/ios/*.xcworkspace
 
 # KMP
-.kotlin/
+**/.kotlin/
 *.xcframework/
 
-# Node.js (backend)
+# Python (backend)
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Node.js
 node_modules/
 npm-debug.*
 yarn-debug.*
 yarn-error.*
-
-# TypeScript
-*.tsbuildinfo
 
 .idea

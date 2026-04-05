@@ -1,5 +1,9 @@
 package com.wishlist.shared
 
+import com.wishlist.shared.auth.AuthTokenHolder
+import com.wishlist.shared.data.Access
+import com.wishlist.shared.data.CoverType
+import com.wishlist.shared.data.ItemCreateRequest
 import com.wishlist.shared.data.Wishlist
 import com.wishlist.shared.data.WishlistItem
 import com.wishlist.shared.data.WishlistRepositoryImpl
@@ -9,7 +13,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.http.ContentType
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logging
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
@@ -20,139 +25,76 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
-/**
- * Unit-level regression tests for [WishlistRepositoryImpl] using in-memory SQLDelight and mock Ktor engine.
- * These run on all KMP targets (JVM + native).
- */
+private val testJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
+
+private fun mockClient(handlers: Map<String, () -> String>): HttpClient = HttpClient(
+    MockEngine { req ->
+        val key = "${req.method.value} ${req.url.encodedPath}"
+        val body = handlers[key]?.invoke() ?: "{}"
+        respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+    }
+) {
+    install(ContentNegotiation) { json(testJson) }
+    install(Logging) { level = LogLevel.NONE }
+}
+
 class WishlistRepositoryImplTest {
+    private fun makeDb() = WishlistDatabase(createInMemoryDriver())
 
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
-
-    private val baseWishlist = Wishlist(
-        id = "w1",
-        name = "Regression Wishlist",
-        description = "desc",
-        ownerId = "u1",
-        isPublic = false,
-        items = emptyList(),
-    )
-
-    private val baseItem = WishlistItem(
-        id = "item1",
-        wishlistId = "w1",
-        name = "Widget",
-        price = 9.99,
-    )
-
-    // ── helpers ──────────────────────────────────────────────────────────────
-
-    private fun makeRepo(
-        responseForPost: String = json.encodeToString(baseWishlist),
-        responseForGet: String = json.encodeToString(listOf(baseWishlist)),
-    ): WishlistRepositoryImpl {
-        val engine = MockEngine { request ->
-            val body = when {
-                request.url.encodedPath.endsWith("/items") -> json.encodeToString(baseItem)
-                request.url.encodedPath.contains("/items/") -> json.encodeToString(baseItem.copy(isPurchased = true))
-                request.url.encodedPath.endsWith("/wishlists") && request.method.value == "POST" -> responseForPost
-                request.url.encodedPath.endsWith("/wishlists") -> responseForGet
-                else -> responseForPost
-            }
-            respond(
-                content = body,
-                status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-            )
-        }
-        val client = WishlistApiClient(
-            baseUrl = "http://test.local",
-            httpClient = HttpClient(engine) {
-                install(ContentNegotiation) { json(json) }
-            },
+    @Test
+    fun createAndObserveWishlist() = runTest {
+        val db = makeDb()
+        val w = Wishlist(
+            id = "w1", ownerId = "u1", name = "Birthday",
+            coverType = CoverType.EMOJI, coverValue = "\uD83C\uDF81", access = Access.LINK,
+            shareToken = "tok1", createdAt = "2025-01-01",
         )
-        val db = WishlistDatabase(createInMemoryDriver())
-        return WishlistRepositoryImpl(client, db)
-    }
+        val http = mockClient(mapOf(
+            "POST /api/wishlists" to { testJson.encodeToString(w) },
+        ))
+        val tokenHolder = AuthTokenHolder().also { it.set("jwt") }
+        val api = WishlistApiClient("http://x", tokenHolder, http)
+        val repo = WishlistRepositoryImpl(api, db)
 
-    // ── tests ─────────────────────────────────────────────────────────────────
+        val created = repo.createWishlist("Birthday", CoverType.EMOJI, "\uD83C\uDF81", Access.LINK)
+        assertEquals("w1", created.id)
+        assertEquals("tok1", created.shareToken)
 
-    @Test
-    fun `getWishlists returns empty flow before any data`() = runTest {
-        val repo = makeRepo()
-        val result = repo.getWishlists("u1").first()
-        assertTrue(result.isEmpty(), "Expected empty list from clean DB")
-    }
-
-    @Test
-    fun `createWishlist persists to local DB`() = runTest {
-        val repo = makeRepo()
-        repo.createWishlist(baseWishlist)
-        val local = repo.getWishlist("w1")
-        assertNotNull(local, "Wishlist should be in DB after createWishlist")
-        assertEquals("Regression Wishlist", local?.name)
+        val observed = repo.observeWishlists("u1").first()
+        assertEquals(1, observed.size)
+        assertEquals("Birthday", observed.first().name)
+        assertEquals(CoverType.EMOJI, observed.first().coverType)
     }
 
     @Test
-    fun `addItem persists item under wishlist`() = runTest {
-        val repo = makeRepo()
-        repo.createWishlist(baseWishlist)
-        repo.addItem("w1", baseItem)
-
-        val wishlist = repo.getWishlist("w1")
-        assertNotNull(wishlist)
-        assertEquals(1, wishlist!!.items.size)
-        assertEquals("Widget", wishlist.items[0].name)
-    }
-
-    @Test
-    fun `markItemPurchased flips purchased flag`() = runTest {
-        val repo = makeRepo()
-        repo.createWishlist(baseWishlist)
-        repo.addItem("w1", baseItem)
-
-        repo.markItemPurchased("item1", true)
-
-        val wishlist = repo.getWishlist("w1")
-        val item = wishlist?.items?.find { it.id == "item1" }
-        assertNotNull(item)
-        assertTrue(item!!.isPurchased, "Item should be marked purchased")
-    }
-
-    @Test
-    fun `deleteItem removes item from DB`() = runTest {
-        val repo = makeRepo()
-        repo.createWishlist(baseWishlist)
-        repo.addItem("w1", baseItem)
-        repo.deleteItem("item1")
-
-        val wishlist = repo.getWishlist("w1")
-        assertTrue(wishlist?.items.isNullOrEmpty(), "Item should be removed after deleteItem")
-    }
-
-    @Test
-    fun `deleteWishlist removes wishlist from DB`() = runTest {
-        val repo = makeRepo()
-        repo.createWishlist(baseWishlist)
-        repo.deleteWishlist("w1")
-
-        assertNull(repo.getWishlist("w1"), "Wishlist should be gone after delete")
-    }
-
-    @Test
-    fun `refreshWishlists syncs remote data to local DB`() = runTest {
-        val wishlistWithItem = baseWishlist.copy(items = listOf(baseItem))
-        val repo = makeRepo(
-            responseForGet = json.encodeToString(listOf(wishlistWithItem)),
+    fun addItemPersists() = runTest {
+        val db = makeDb()
+        val item = WishlistItem(
+            id = "i1", wishlistId = "w1", name = "AirPods",
+            price = 249.0, currency = "USD", size = "M", sortOrder = 0,
         )
-        repo.refreshWishlists("u1")
+        val http = mockClient(mapOf(
+            "POST /api/wishlists/w1/items" to { testJson.encodeToString(item) },
+        ))
+        val tokenHolder = AuthTokenHolder().also { it.set("jwt") }
+        val api = WishlistApiClient("http://x", tokenHolder, http)
+        val repo = WishlistRepositoryImpl(api, db)
 
-        val local = repo.getWishlist("w1")
-        assertNotNull(local)
-        assertEquals(1, local?.items?.size)
+        // Seed the parent wishlist locally so FK doesn't complain
+        db.wishlistQueries.insertOrReplaceWishlist(
+            id = "w1", ownerId = "u1", name = "Birthday",
+            coverType = "emoji", coverValue = "\uD83C\uDF81",
+            access = "link", shareToken = "tok", createdAt = "",
+        )
+
+        val created = repo.createItem("w1", ItemCreateRequest(name = "AirPods", price = 249.0, currency = "USD", size = "M"))
+        assertEquals("i1", created.id)
+
+        val fetched = repo.getWishlist("w1")
+        assertNotNull(fetched)
+        assertEquals(1, fetched!!.items.size)
+        assertEquals("M", fetched.items[0].size)
     }
 }

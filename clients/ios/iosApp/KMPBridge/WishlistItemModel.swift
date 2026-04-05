@@ -1,71 +1,65 @@
 import Foundation
 import Shared
 
-/// Swift value type mirroring `WishlistItem` from the KMP shared module.
+/// Swift value type mirroring KMP `WishlistItem`.
 struct WishlistItemModel: Identifiable, Equatable {
     let id: String
     let wishlistId: String
     var name: String
-    var description: String
     var url: String?
     var imageUrl: String?
+    var description: String?
     var price: Double?
     var currency: String
-    var isPurchased: Bool
+    var size: String?
+    var comment: String?
+    var sortOrder: Int
 
     init(_ kmp: WishlistItem) {
         id = kmp.id
         wishlistId = kmp.wishlistId
         name = kmp.name
-        description = kmp.description
         url = kmp.url
         imageUrl = kmp.imageUrl
+        description = kmp.description_
         price = kmp.price?.doubleValue
         currency = kmp.currency
-        isPurchased = kmp.isPurchased
-    }
-
-    func toKMP() -> WishlistItem {
-        WishlistItem(
-            id: id,
-            wishlistId: wishlistId,
-            name: name,
-            description: description,
-            url: url,
-            imageUrl: imageUrl,
-            price: price.map { KotlinDouble(value: $0) },
-            currency: currency,
-            isPurchased: isPurchased
-        )
+        size = kmp.size
+        comment = kmp.comment
+        sortOrder = Int(kmp.sortOrder)
     }
 }
 
-/// Swift value type mirroring `Wishlist` from the KMP shared module.
+/// Swift value type mirroring KMP `Wishlist`.
 struct WishlistModel: Identifiable, Equatable {
     let id: String
-    var name: String
-    var description: String
-    var items: [WishlistItemModel]
     let ownerId: String
-    var isPublic: Bool
+    var name: String
+    var coverType: CoverType
+    var coverValue: String?
+    var access: Access
+    let shareToken: String
+    var items: [WishlistItemModel]
 
     init(_ kmp: Wishlist) {
         id = kmp.id
-        name = kmp.name
-        description = kmp.description
-        items = kmp.items.map { WishlistItemModel($0) }
         ownerId = kmp.ownerId
-        isPublic = kmp.isPublic
+        name = kmp.name
+        coverType = kmp.coverType
+        coverValue = kmp.coverValue
+        access = kmp.access
+        shareToken = kmp.shareToken
+        items = kmp.items.map(WishlistItemModel.init)
     }
+}
 
-    func toKMP() -> Wishlist {
-        Wishlist(
-            id: id,
-            name: name,
-            description: description,
-            items: items.map { $0.toKMP() },
-            ownerId: ownerId,
-            isPublic: isPublic
-        )
-    }
+extension CoverType {
+    /// Wire string: "none" | "emoji" | "image"
+    var wireValue: String { wire() }
+}
+
+extension Access {
+    /// Wire string: "link" | "public" | "private"
+    var wireValue: String { wire() }
+    var displayLabel: String { wireValue.capitalized }
 }

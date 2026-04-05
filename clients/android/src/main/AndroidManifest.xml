@@ -6,6 +6,7 @@
     <application
         android:name=".WishlistApplication"
         android:label="Wishlist"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         <activity
             android:name=".MainActivity"

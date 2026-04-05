@@ -2,32 +2,37 @@ import Foundation
 import Shared
 
 /// Swift async/await wrapper around the KMP `WishlistRepository`.
-///
-/// Bridges Kotlin `Flow` / `suspend` functions so SwiftUI ViewModels
-/// never import Kotlin types directly.
+/// ViewModels call this wrapper and never touch Kotlin types directly.
 @MainActor
 final class WishlistRepositoryWrapper {
-
     private let repository: WishlistRepository
 
     init(repository: WishlistRepository) {
         self.repository = repository
     }
 
-    // MARK: - Wishlists
-
-    /// Live stream of all wishlists owned by the user.
-    /// Uses SKIE-generated async sequence (or fallback shim) over the KMP Flow.
-    func wishlists(userId: String) -> AsyncStream<[WishlistModel]> {
-        AsyncStream { continuation in
+    func loadWishlists() async throws -> [WishlistModel] {
+        // Force a network refresh first, then read from local cache.
+        // Current user id resolved through AuthRepository wrapper.
+        let authRepo = AppContainer.shared.authRepository
+        let userId = authRepo.currentUserId()
+        if authRepo.isAuthenticated() {
+            try await repository.refresh(ownerId: userId)
+        }
+        return try await withCheckedThrowingContinuation { cont in
             Task {
                 do {
-                    for try await batch in repository.getWishlists(userId: userId) {
-                        let models = (batch as! [Wishlist]).map(WishlistModel.init)
-                        continuation.yield(models)
+                    // Observe the flow once (first emission) via a tiny helper.
+                    let stream = repository.observeWishlists(ownerId: userId)
+                    var iterator = stream.makeAsyncIterator()
+                    if let first = try await iterator.next() {
+                        let list = (first as? [Wishlist]) ?? []
+                        cont.resume(returning: list.map(WishlistModel.init))
+                    } else {
+                        cont.resume(returning: [])
                     }
                 } catch {
-                    continuation.finish()
+                    cont.resume(throwing: error)
                 }
             }
         }
@@ -38,20 +43,12 @@ final class WishlistRepositoryWrapper {
         return WishlistModel(kmp)
     }
 
-    func createWishlist(name: String, description: String, isPublic: Bool, ownerId: String) async throws -> WishlistModel {
-        let kmp = try await repository.createWishlist(wishlist: Wishlist(
-            id: UUID().uuidString,
-            name: name,
-            description: description,
-            items: [],
-            ownerId: ownerId,
-            isPublic: isPublic
-        ))
-        return WishlistModel(kmp)
-    }
-
-    func updateWishlist(_ model: WishlistModel) async throws -> WishlistModel {
-        let kmp = try await repository.updateWishlist(wishlist: model.toKMP())
+    func createWishlist(
+        name: String, coverType: CoverType, coverValue: String?, access: Access
+    ) async throws -> WishlistModel {
+        let kmp = try await repository.createWishlist(
+            name: name, coverType: coverType, coverValue: coverValue, access: access
+        )
         return WishlistModel(kmp)
     }
 
@@ -59,36 +56,16 @@ final class WishlistRepositoryWrapper {
         try await repository.deleteWishlist(id: id)
     }
 
-    // MARK: - Items
-
-    func addItem(wishlistId: String, name: String, description: String, url: String?, price: Double?, currency: String) async throws -> WishlistItemModel {
-        let kmp = try await repository.addItem(
-            wishlistId: wishlistId,
-            item: WishlistItem(
-                id: UUID().uuidString,
-                wishlistId: wishlistId,
-                name: name,
-                description: description,
-                url: url,
-                imageUrl: nil,
-                price: price.map { KotlinDouble(value: $0) },
-                currency: currency,
-                isPurchased: false
-            )
-        )
+    func createItem(wishlistId: String, req: ItemCreateRequest) async throws -> WishlistItemModel {
+        let kmp = try await repository.createItem(wishlistId: wishlistId, req: req)
         return WishlistItemModel(kmp)
     }
 
-    func updateItem(_ model: WishlistItemModel) async throws -> WishlistItemModel {
-        let kmp = try await repository.updateItem(item: model.toKMP())
-        return WishlistItemModel(kmp)
+    func deleteItem(wishlistId: String, itemId: String) async throws {
+        try await repository.deleteItem(wishlistId: wishlistId, itemId: itemId)
     }
 
-    func deleteItem(id: String) async throws {
-        try await repository.deleteItem(id: id)
-    }
-
-    func markItemPurchased(itemId: String, purchased: Bool) async throws {
-        try await repository.markItemPurchased(itemId: itemId, purchased: purchased)
+    func parseUrl(_ url: String) async throws -> ParsedProduct {
+        try await repository.parseProductUrl(url: url)
     }
 }

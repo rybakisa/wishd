@@ -1,107 +1,160 @@
 import Foundation
 import SwiftUI
+import Shared
 
 @MainActor
-final class WishlistViewModel: ObservableObject {
+final class HomeViewModel: ObservableObject {
+    @Published var wishlists: [WishlistModel] = []
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String?
+    @Published var currentUser: AuthUser?
 
-    @Published private(set) var wishlists: [WishlistModel] = []
-    @Published private(set) var isLoading = false
+    private let repo: WishlistRepositoryWrapper
+    private let auth: AuthRepositoryWrapper
+
+    init(repo: WishlistRepositoryWrapper = AppContainer.shared.wishlistRepository,
+         auth: AuthRepositoryWrapper = AppContainer.shared.authRepository) {
+        self.repo = repo
+        self.auth = auth
+    }
+
+    func onAppear() async {
+        currentUser = auth.currentUser()
+        await reload()
+    }
+
+    func reload() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            wishlists = try await repo.loadWishlists()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func delete(_ id: String) async {
+        do {
+            try await repo.deleteWishlist(id: id)
+            await reload()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+@MainActor
+final class AuthViewModel: ObservableObject {
+    @Published var busy: Bool = false
     @Published var errorMessage: String?
 
-    private let repository: WishlistRepositoryWrapper
-    private let userId: String
-    private var streamTask: Task<Void, Never>?
+    private let auth: AuthRepositoryWrapper
 
-    init(repository: WishlistRepositoryWrapper, userId: String = "current-user") {
-        self.repository = repository
-        self.userId = userId
+    init(auth: AuthRepositoryWrapper = AppContainer.shared.authRepository) {
+        self.auth = auth
     }
 
-    // MARK: - Lifecycle
-
-    func onAppear() {
-        guard streamTask == nil else { return }
-        isLoading = true
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            for await batch in self.repository.wishlists(userId: self.userId) {
-                self.wishlists = batch
-                self.isLoading = false
-            }
+    func login(provider: AuthProvider, email: String, displayName: String?) async -> Bool {
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await auth.login(provider: provider, email: email, displayName: displayName)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
+}
 
-    func onDisappear() {
-        streamTask?.cancel()
-        streamTask = nil
+@MainActor
+final class WishlistDetailViewModel: ObservableObject {
+    @Published var wishlist: WishlistModel?
+    @Published var errorMessage: String?
+
+    let wishlistId: String
+    private let repo: WishlistRepositoryWrapper
+
+    init(wishlistId: String, repo: WishlistRepositoryWrapper = AppContainer.shared.wishlistRepository) {
+        self.wishlistId = wishlistId
+        self.repo = repo
     }
 
-    // MARK: - Wishlist Actions
+    func load() async {
+        do { wishlist = try await repo.getWishlist(id: wishlistId) }
+        catch { errorMessage = error.localizedDescription }
+    }
 
-    func createWishlist(name: String, description: String, isPublic: Bool) async {
+    func deleteItem(_ itemId: String) async {
         do {
-            _ = try await repository.createWishlist(
-                name: name,
-                description: description,
-                isPublic: isPublic,
-                ownerId: userId
+            try await repo.deleteItem(wishlistId: wishlistId, itemId: itemId)
+            await load()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+@MainActor
+final class AddItemViewModel: ObservableObject {
+    @Published var busy: Bool = false
+    @Published var errorMessage: String?
+    @Published var parsed: ParsedProduct?
+
+    let wishlistId: String
+    private let repo: WishlistRepositoryWrapper
+
+    init(wishlistId: String, repo: WishlistRepositoryWrapper = AppContainer.shared.wishlistRepository) {
+        self.wishlistId = wishlistId
+        self.repo = repo
+    }
+
+    func parseUrl(_ url: String) async {
+        busy = true
+        defer { busy = false }
+        do { parsed = try await repo.parseUrl(url) }
+        catch { errorMessage = "Could not parse URL" }
+    }
+
+    func save(_ req: ItemCreateRequest) async -> Bool {
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await repo.createItem(wishlistId: wishlistId, req: req)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+}
+
+@MainActor
+final class CreateWishlistViewModel: ObservableObject {
+    @Published var busy: Bool = false
+    @Published var errorMessage: String?
+
+    private let repo: WishlistRepositoryWrapper
+    private let auth: AuthRepositoryWrapper
+
+    init(repo: WishlistRepositoryWrapper = AppContainer.shared.wishlistRepository,
+         auth: AuthRepositoryWrapper = AppContainer.shared.authRepository) {
+        self.repo = repo
+        self.auth = auth
+    }
+
+    var requiresLogin: Bool { !auth.isAuthenticated() }
+
+    func create(name: String, coverType: CoverType, coverValue: String?, access: Access) async -> WishlistModel? {
+        busy = true
+        defer { busy = false }
+        do {
+            return try await repo.createWishlist(
+                name: name, coverType: coverType, coverValue: coverValue, access: access
             )
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-
-    func deleteWishlist(id: String) async {
-        do {
-            try await repository.deleteWishlist(id: id)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func deleteWishlists(at offsets: IndexSet) async {
-        let ids = offsets.map { wishlists[$0].id }
-        for id in ids { await deleteWishlist(id: id) }
-    }
-
-    // MARK: - Item Actions
-
-    func addItem(to wishlistId: String, name: String, description: String, url: String?, price: Double?, currency: String = "USD") async {
-        do {
-            _ = try await repository.addItem(
-                wishlistId: wishlistId,
-                name: name,
-                description: description,
-                url: url,
-                price: price,
-                currency: currency
-            )
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func togglePurchased(_ item: WishlistItemModel) async {
-        do {
-            try await repository.markItemPurchased(itemId: item.id, purchased: !item.isPurchased)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func deleteItem(id: String) async {
-        do {
-            try await repository.deleteItem(id: id)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func updateItem(_ item: WishlistItemModel) async {
-        do {
-            _ = try await repository.updateItem(item)
-        } catch {
-            errorMessage = error.localizedDescription
+            return nil
         }
     }
 }

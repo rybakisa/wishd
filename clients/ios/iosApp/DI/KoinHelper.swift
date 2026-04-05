@@ -1,16 +1,12 @@
 import Foundation
 import Shared
 
-/// Initialises Koin for iOS.
-///
-/// Call `KoinHelper.shared.start(baseUrl:)` once at app launch.
-/// All KMP dependencies are then resolvable through the Koin container.
+/// Initialises Koin for iOS. Call `KoinHelper.shared.start(baseUrl:)` once at app launch.
 final class KoinHelper {
-
     static let shared = KoinHelper()
     private init() {}
 
-    func start(baseUrl: String = "https://your-supabase-url.supabase.co/functions/v1") {
+    func start(baseUrl: String = "http://localhost:4000") {
         SharedModuleKt.doInitKoin(baseUrl: baseUrl)
     }
 }

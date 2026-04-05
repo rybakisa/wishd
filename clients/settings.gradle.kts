@@ -13,10 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "wishlist"
+rootProject.name = "wishlist-clients"
 
-include(":clients:shared")
-project(":clients:shared").projectDir = file("clients/shared")
-
-include(":clients:android")
-project(":clients:android").projectDir = file("clients/android")
+include(":shared")
+include(":android")
