@@ -126,8 +126,10 @@ class WishlistApiClient(
     suspend fun getShared(token: String): Wishlist =
         ensureOk(client.get("$baseUrl/api/share/$token")).body()
 
-    suspend fun parseUrl(url: String): ParsedProduct =
-        ensureOk(client.get("$baseUrl/api/parse-url?url=${url.encodeURLParameter()}")).body()
+    suspend fun parseUrl(url: String): ParsedProduct {
+        val normalised = url.trim().let { if ("://" !in it) "https://$it" else it }
+        return ensureOk(client.get("$baseUrl/api/parse-url?url=${normalised.encodeURLParameter()}")).body()
+    }
 }
 
 class ApiException(val status: Int, message: String) : RuntimeException("HTTP $status: $message")
