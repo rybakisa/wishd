@@ -54,11 +54,23 @@ final class AuthViewModel: ObservableObject {
         self.auth = auth
     }
 
-    func login(provider: AuthProvider, email: String, displayName: String?) async -> Bool {
+    func signInWithGoogle() async -> Bool {
         busy = true
         defer { busy = false }
         do {
-            _ = try await auth.login(provider: provider, email: email, displayName: displayName)
+            try await auth.signInWithGoogle()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func signInWithApple() async -> Bool {
+        busy = true
+        defer { busy = false }
+        do {
+            try await auth.signInWithApple()
             return true
         } catch {
             errorMessage = error.localizedDescription

@@ -11,8 +11,12 @@ final class AuthRepositoryWrapper {
         Task { try? await repo.restore() }
     }
 
-    func login(provider: AuthProvider, email: String, displayName: String?) async throws -> AuthUser {
-        try await repo.login(provider: provider, email: email, displayName: displayName)
+    func signInWithGoogle() async throws {
+        try await repo.signInWithGoogle()
+    }
+
+    func signInWithApple() async throws {
+        try await repo.signInWithApple()
     }
 
     func logout() async throws {

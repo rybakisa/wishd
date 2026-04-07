@@ -94,20 +94,6 @@ data class AuthUser(
 )
 
 @Serializable
-data class AuthStubRequest(
-    val provider: AuthProvider,
-    val email: String,
-    val displayName: String? = null,
-    val avatarUrl: String? = null,
-)
-
-@Serializable
-data class AuthResponse(
-    val token: String,
-    val user: AuthUser,
-)
-
-@Serializable
 data class WishlistCreateRequest(
     val name: String,
     val coverType: CoverType = CoverType.NONE,

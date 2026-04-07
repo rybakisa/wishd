@@ -45,6 +45,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.3")
 
+    // Supabase Compose Auth
+    implementation(platform(libs.supabase.bom))
+    implementation(libs.supabase.compose.auth)
+
     // Koin
     implementation(libs.koin.android)
     implementation("io.insert-koin:koin-androidx-compose:${libs.versions.koinAndroid.get()}")

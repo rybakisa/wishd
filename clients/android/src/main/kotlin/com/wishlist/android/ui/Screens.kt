@@ -82,7 +82,6 @@ import com.wishlist.android.ui.viewmodel.CreateWishlistViewModel
 import com.wishlist.android.ui.viewmodel.HomeViewModel
 import com.wishlist.android.ui.viewmodel.WishlistDetailViewModel
 import com.wishlist.shared.data.Access
-import com.wishlist.shared.data.AuthProvider
 import com.wishlist.shared.data.CoverType
 import com.wishlist.shared.data.ItemCreateRequest
 import com.wishlist.shared.data.Wishlist
@@ -251,7 +250,6 @@ fun AuthScreen(nav: NavHostController) {
     val vm: AuthViewModel = koinViewModel()
     val busy by vm.busy.collectAsState()
     val error by vm.error.collectAsState()
-    var showEmailDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -285,15 +283,11 @@ fun AuthScreen(nav: NavHostController) {
 
             BigBlockButton(
                 "Continue with Apple", fill = true, enabled = !busy,
-            ) { vm.login(AuthProvider.APPLE, "apple-user@privaterelay.appleid.com", "Apple User") { nav.popBackStack() } }
+            ) { vm.signInWithApple { nav.popBackStack() } }
             Spacer(Modifier.height(12.dp))
             BigBlockButton(
                 "Continue with Google", fill = false, enabled = !busy,
-            ) { vm.login(AuthProvider.GOOGLE, "google-user@gmail.com", "Google User") { nav.popBackStack() } }
-            Spacer(Modifier.height(12.dp))
-            BigBlockButton(
-                "Continue with Email", fill = false, enabled = !busy,
-            ) { showEmailDialog = true }
+            ) { vm.signInWithGoogle { nav.popBackStack() } }
 
             Spacer(Modifier.height(16.dp))
             error?.let {
@@ -302,18 +296,6 @@ fun AuthScreen(nav: NavHostController) {
         }
     }
 
-    if (showEmailDialog) {
-        EmailLoginDialog(
-            busy = busy,
-            onDismiss = { showEmailDialog = false },
-            onConfirm = { email ->
-                vm.login(AuthProvider.EMAIL, email) {
-                    showEmailDialog = false
-                    nav.popBackStack()
-                }
-            },
-        )
-    }
 }
 
 @Composable
@@ -335,28 +317,6 @@ private fun BigBlockButton(text: String, fill: Boolean, enabled: Boolean, onClic
             shape = MaterialTheme.shapes.large,
         ) { Text(text, fontWeight = FontWeight.SemiBold) }
     }
-}
-
-@Composable
-private fun EmailLoginDialog(busy: Boolean, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var email by rememberSaveable { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Enter your email") },
-        text = {
-            OutlinedTextField(
-                value = email, onValueChange = { email = it }, singleLine = true,
-                label = { Text("Email") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(email.trim()) }, enabled = !busy && email.contains("@")) {
-                Text("Continue")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }
 
 // ============ CREATE WISHLIST ============

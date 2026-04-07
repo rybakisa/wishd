@@ -4,7 +4,6 @@ import Shared
 struct AuthView: View {
     @StateObject private var vm = AuthViewModel()
     @Environment(\.dismiss) private var dismiss
-    @State private var showEmailSheet = false
 
     var body: some View {
         NavigationStack {
@@ -16,9 +15,7 @@ struct AuthView: View {
 
                 Button {
                     Task {
-                        if await vm.login(provider: .apple,
-                                          email: "apple-user@privaterelay.appleid.com",
-                                          displayName: "Apple User") { dismiss() }
+                        if await vm.signInWithApple() { dismiss() }
                     }
                 } label: {
                     Text("Continue with Apple").fontWeight(.semibold).frame(maxWidth: .infinity)
@@ -29,20 +26,10 @@ struct AuthView: View {
 
                 Button {
                     Task {
-                        if await vm.login(provider: .google,
-                                          email: "google-user@gmail.com",
-                                          displayName: "Google User") { dismiss() }
+                        if await vm.signInWithGoogle() { dismiss() }
                     }
                 } label: {
                     Text("Continue with Google").fontWeight(.semibold).frame(maxWidth: .infinity)
-                }
-                .controlSize(.large)
-                .buttonStyle(.bordered)
-
-                Button {
-                    showEmailSheet = true
-                } label: {
-                    Text("Continue with Email").fontWeight(.semibold).frame(maxWidth: .infinity)
                 }
                 .controlSize(.large)
                 .buttonStyle(.bordered)
@@ -57,42 +44,7 @@ struct AuthView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() } }
             }
-            .sheet(isPresented: $showEmailSheet) {
-                EmailLoginSheet(vm: vm, onDone: { dismiss() })
-            }
             .disabled(vm.busy)
-        }
-    }
-}
-
-private struct EmailLoginSheet: View {
-    @ObservedObject var vm: AuthViewModel
-    let onDone: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var email: String = ""
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Email", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-            }
-            .navigationTitle("Sign in")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Continue") {
-                        Task {
-                            if await vm.login(provider: .email, email: email, displayName: nil) {
-                                dismiss(); onDone()
-                            }
-                        }
-                    }
-                    .disabled(!email.contains("@") || vm.busy)
-                }
-            }
         }
     }
 }
