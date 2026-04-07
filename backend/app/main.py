@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_router
+from app.config import CORS_ORIGINS
 from app.db import init_db
 from app.parse_url import parse_product_url
 from app.routes.share import router as share_router
@@ -13,7 +14,7 @@ app = FastAPI(title="Wishlist API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

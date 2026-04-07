@@ -25,18 +25,6 @@ class User(CamelModel):
     provider: Provider
 
 
-class AuthStubRequest(BaseModel):
-    provider: Provider
-    email: str
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-
-
-class AuthResponse(CamelModel):
-    token: str
-    user: User
-
-
 class WishlistItem(CamelModel):
     id: str
     wishlist_id: str
