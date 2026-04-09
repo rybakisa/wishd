@@ -1,10 +1,20 @@
-"""Unit tests for authentication: Supabase JWT validation, bearer extraction, user upsert, endpoints."""
+"""Unit tests for authentication: Supabase JWT validation, bearer extraction, user upsert, endpoints.
 
+Tests use the HS256 shared-secret fallback (``jwt_secret``) for simplicity.
+The JWKS path is tested separately in ``TestJWKSVerification``.
+"""
+
+import json
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 from fastapi.testclient import TestClient
+from jwt.algorithms import RSAAlgorithm
 
 from main import app
 from runtime import RuntimeContainer
@@ -110,6 +120,20 @@ class TestDecodeSupabaseToken:
         with pytest.raises((jwt.InvalidTokenError, jwt.PyJWTError)):
             svc.decode_supabase_token(token)
 
+    def test_no_secret_no_jwks_raises(self, pg_dsn):
+        from application.user.service import UserService
+        from domain.user.use_cases import UserUseCases
+        from infra.postgresql.client import PostgreSQLClient
+        from infra.postgresql.user_repository import UserRepository
+        db = PostgreSQLClient(pg_dsn)
+        db.init_db()
+        repo = UserRepository(db)
+        uc = UserUseCases(repo)
+        svc = UserService(uc)  # no secret, no jwks
+        token = _make_supabase_jwt()
+        with pytest.raises(jwt.InvalidTokenError, match="No JWKS"):
+            svc.decode_supabase_token(token)
+
 
 class TestDecodeToken:
     def _get_service(self, pg_dsn):
@@ -150,6 +174,126 @@ class TestDecodeToken:
         with pytest.raises(Exception) as exc:
             svc.decode_token("garbage")
         assert exc.value.headers.get("WWW-Authenticate") == "Bearer"
+
+
+# ---------------------------------------------------------------------------
+# JWKS (asymmetric RS256) verification
+# ---------------------------------------------------------------------------
+class TestJWKSVerification:
+    """Test the JWKS code path using a real RSA key pair and a local HTTP server."""
+
+    @pytest.fixture()
+    def rsa_keypair(self):
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        return private_key
+
+    @pytest.fixture()
+    def jwks_server(self, rsa_keypair):
+        """Start a local HTTP server that serves a JWKS JSON with the test RSA public key."""
+        public_key = rsa_keypair.public_key()
+        jwk_dict = json.loads(RSAAlgorithm.to_jwk(public_key))
+        jwk_dict["kid"] = "test-key-1"
+        jwk_dict["use"] = "sig"
+        jwk_dict["alg"] = "RS256"
+        jwks_json = json.dumps({"keys": [jwk_dict]}).encode()
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(jwks_json)
+
+            def log_message(self, *args):
+                pass  # suppress logs
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        yield f"http://127.0.0.1:{port}/.well-known/jwks.json"
+        server.shutdown()
+
+    def test_rs256_token_verified_via_jwks(self, pg_dsn, rsa_keypair, jwks_server):
+        from application.user.service import UserService
+        from domain.user.use_cases import UserUseCases
+        from infra.postgresql.client import PostgreSQLClient
+        from infra.postgresql.user_repository import UserRepository
+
+        db = PostgreSQLClient(pg_dsn)
+        db.init_db()
+        repo = UserRepository(db)
+        uc = UserUseCases(repo)
+        svc = UserService(uc, jwks_url=jwks_server)
+
+        private_pem = rsa_keypair.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        payload = {
+            "sub": "00000000-0000-0000-0000-000000000099",
+            "aud": "authenticated",
+            "email": "rs256@test.com",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 300,
+            "user_metadata": {},
+            "app_metadata": {"provider": "google"},
+        }
+        token = jwt.encode(
+            payload, private_pem, algorithm="RS256",
+            headers={"kid": "test-key-1"},
+        )
+
+        result = svc.decode_supabase_token(token)
+        assert result["sub"] == "00000000-0000-0000-0000-000000000099"
+        assert result["email"] == "rs256@test.com"
+
+    def test_wrong_rsa_key_rejected(self, pg_dsn, jwks_server):
+        from application.user.service import UserService
+        from domain.user.use_cases import UserUseCases
+        from infra.postgresql.client import PostgreSQLClient
+        from infra.postgresql.user_repository import UserRepository
+
+        db = PostgreSQLClient(pg_dsn)
+        db.init_db()
+        repo = UserRepository(db)
+        uc = UserUseCases(repo)
+        svc = UserService(uc, jwks_url=jwks_server)
+
+        # Sign with a different RSA key than what's in the JWKS
+        other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        other_pem = other_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        payload = {
+            "sub": "u-1", "aud": "authenticated",
+            "iat": int(time.time()), "exp": int(time.time()) + 300,
+        }
+        token = jwt.encode(payload, other_pem, algorithm="RS256")
+
+        with pytest.raises(jwt.PyJWTError):
+            svc.decode_supabase_token(token)
+
+    def test_jwks_preferred_over_secret(self, pg_dsn, rsa_keypair, jwks_server):
+        """When both JWKS and secret are provided, JWKS is used."""
+        from application.user.service import UserService
+        from domain.user.use_cases import UserUseCases
+        from infra.postgresql.client import PostgreSQLClient
+        from infra.postgresql.user_repository import UserRepository
+
+        db = PostgreSQLClient(pg_dsn)
+        db.init_db()
+        repo = UserRepository(db)
+        uc = UserUseCases(repo)
+        svc = UserService(uc, jwks_url=jwks_server, jwt_secret=SUPABASE_SECRET)
+
+        # An HS256 token should fail because JWKS (RS256) is preferred
+        hs256_token = _make_supabase_jwt()
+        with pytest.raises(jwt.PyJWTError):
+            svc.decode_supabase_token(hs256_token)
 
 
 # ---------------------------------------------------------------------------

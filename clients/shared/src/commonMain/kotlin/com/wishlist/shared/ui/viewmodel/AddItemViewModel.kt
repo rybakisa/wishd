@@ -1,4 +1,4 @@
-package com.wishlist.android.ui.viewmodel
+package com.wishlist.shared.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

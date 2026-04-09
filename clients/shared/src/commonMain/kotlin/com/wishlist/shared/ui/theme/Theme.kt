@@ -1,4 +1,4 @@
-package com.wishlist.android.ui.theme
+package com.wishlist.shared.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +14,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 private val AppleBlue = Color(0xFF0A84FF)
-private val AppleBlueDark = Color(0xFF0A84FF)
 
 private val LightScheme = lightColorScheme(
     primary = AppleBlue,
@@ -28,7 +27,7 @@ private val LightScheme = lightColorScheme(
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = AppleBlueDark,
+    primary = AppleBlue,
     onPrimary = Color.White,
     background = Color(0xFF000000),
     surface = Color(0xFF1C1C1E),

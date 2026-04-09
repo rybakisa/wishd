@@ -1,4 +1,4 @@
-package com.wishlist.android.ui.viewmodel
+package com.wishlist.shared.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,7 +23,6 @@ class AuthViewModel(
     val authState: StateFlow<AuthState> = auth.authState
 
     init {
-        // Auto-logout when token refresh fails irrecoverably
         apiClient?.let { client ->
             viewModelScope.launch {
                 client.authExpired.collect {
@@ -33,7 +32,6 @@ class AuthViewModel(
         }
     }
 
-    /** Sign in with Google via Supabase OAuth. */
     fun signInWithGoogle(onDone: () -> Unit = {}) {
         viewModelScope.launch {
             _busy.value = true
@@ -45,7 +43,6 @@ class AuthViewModel(
         }
     }
 
-    /** Sign in with Apple via Supabase OAuth. */
     fun signInWithApple(onDone: () -> Unit = {}) {
         viewModelScope.launch {
             _busy.value = true

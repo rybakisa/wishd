@@ -12,7 +12,13 @@ from services.url_parser import parse_product_url
 
 
 class RuntimeContainer:
-    def __init__(self, *, database_url: str, jwt_secret: str) -> None:
+    def __init__(
+        self,
+        *,
+        database_url: str,
+        jwks_url: str = "",
+        jwt_secret: str = "",
+    ) -> None:
         # Infrastructure
         self.db_client = PostgreSQLClient(database_url)
         self.db_client.init_db()
@@ -26,7 +32,11 @@ class RuntimeContainer:
         self.wishlist_use_cases = WishlistUseCases(self.wishlist_repository)
 
         # Application services
-        self.user_service = UserService(self.user_use_cases, jwt_secret=jwt_secret)
+        self.user_service = UserService(
+            self.user_use_cases,
+            jwks_url=jwks_url,
+            jwt_secret=jwt_secret,
+        )
         self.wishlist_service = WishlistService(self.wishlist_use_cases)
         self.product_service = ProductService(parse_product_url)
 

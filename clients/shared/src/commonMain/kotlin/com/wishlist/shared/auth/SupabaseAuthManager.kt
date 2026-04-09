@@ -18,11 +18,11 @@ import kotlinx.coroutines.flow.Flow
  */
 class SupabaseAuthManager(
     supabaseUrl: String,
-    supabaseAnonKey: String,
+    supabasePublishableKey: String,
     callbackScheme: String = "com.wishlist.app",
     callbackHost: String = "auth",
 ) {
-    val client: SupabaseClient = createSupabaseClient(supabaseUrl, supabaseAnonKey) {
+    val client: SupabaseClient = createSupabaseClient(supabaseUrl, supabasePublishableKey) {
         install(Auth) {
             alwaysAutoRefresh = true
             scheme = callbackScheme

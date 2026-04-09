@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.sqldelight)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
 }
 
 kotlin {
@@ -29,6 +31,21 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            // Compose Multiplatform
+            implementation(compose.runtime)
+            implementation(compose.foundation)
+            implementation(compose.material3)
+            implementation(compose.materialIconsExtended)
+            implementation(compose.ui)
+            implementation(compose.components.uiToolingPreview)
+            implementation(compose.components.resources)
+
+            // Navigation (Compose Multiplatform)
+            implementation(libs.navigation.compose)
+
+            // Lifecycle ViewModel (Compose Multiplatform)
+            implementation(libs.lifecycle.viewmodel.compose)
+
             // Ktor
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
@@ -49,6 +66,8 @@ kotlin {
 
             // Koin
             implementation(libs.koin.core)
+            implementation(libs.koin.compose)
+            implementation(libs.koin.compose.viewmodel)
         }
 
         androidMain.dependencies {
@@ -56,6 +75,7 @@ kotlin {
             implementation(libs.sqldelight.android.driver)
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.koin.android)
+            implementation(compose.uiTooling)
         }
 
         iosMain.dependencies {

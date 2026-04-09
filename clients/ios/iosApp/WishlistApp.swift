@@ -8,7 +8,7 @@ struct WishlistApp: App {
         KoinHelper.shared.start(
             baseUrl: Secrets.apiBaseUrl,
             supabaseUrl: Secrets.supabaseUrl,
-            supabaseAnonKey: Secrets.supabaseAnonKey,
+            supabasePublishableKey: Secrets.supabasePublishableKey,
             callbackScheme: "com.wishlist.ios",
             callbackHost: "auth"
         )

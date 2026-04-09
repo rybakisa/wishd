@@ -9,14 +9,14 @@ final class KoinHelper {
     func start(
         baseUrl: String = "http://localhost:4000",
         supabaseUrl: String = "",
-        supabaseAnonKey: String = "",
+        supabasePublishableKey: String = "",
         callbackScheme: String = "com.wishlist.ios",
         callbackHost: String = "auth"
     ) {
         SharedModuleKt.doInitKoin(
             baseUrl: baseUrl,
             supabaseUrl: supabaseUrl,
-            supabaseAnonKey: supabaseAnonKey,
+            supabasePublishableKey: supabasePublishableKey,
             callbackScheme: callbackScheme,
             callbackHost: callbackHost
         )

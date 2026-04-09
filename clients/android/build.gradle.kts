@@ -23,7 +23,7 @@ android {
         versionName = "1.0"
 
         buildConfigField("String", "SUPABASE_URL", "\"${secrets.getProperty("SUPABASE_URL", "")}\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secrets.getProperty("SUPABASE_ANON_KEY", "")}\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${secrets.getProperty("SUPABASE_PUBLISHABLE_KEY", "")}\"")
         buildConfigField("String", "API_BASE_URL", "\"${secrets.getProperty("API_BASE_URL", "http://10.0.2.2:4000")}\"")
     }
 
@@ -45,30 +45,19 @@ android {
 dependencies {
     implementation(project(":shared"))
 
-    // Compose BOM
-    val composeBom = platform(libs.androidx.compose.bom)
-    implementation(composeBom)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
-    implementation("androidx.compose.material:material-icons-extended")
+    // Android Compose entry point
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.navigation:navigation-compose:2.8.3")
 
-    // Supabase Compose Auth
+    // Supabase Compose Auth (Android-specific deep link handling)
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.compose.auth)
 
-    // Koin
+    // Koin Android
     implementation(libs.koin.android)
-    implementation("io.insert-koin:koin-androidx-compose:${libs.versions.koinAndroid.get()}")
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
-
-    debugImplementation("androidx.compose.ui:ui-tooling")
 
     // Tests
     testImplementation("junit:junit:4.13.2")

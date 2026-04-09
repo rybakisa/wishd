@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class AuthRepository(
@@ -23,11 +25,14 @@ class AuthRepository(
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unknown)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    // Keep for backward compat
     private val _currentUser = MutableStateFlow<AuthUser?>(null)
     val currentUser: StateFlow<AuthUser?> = _currentUser.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val syncMutex = Mutex()
+
+    /** Token that was last successfully synced or attempted — prevents retry loops. */
+    private var lastSyncedToken: String? = null
 
     init {
         supabaseAuth?.let { mgr ->
@@ -44,23 +49,38 @@ class AuthRepository(
             is SessionStatus.Authenticated -> {
                 val accessToken = supabaseAuth?.currentAccessToken() ?: return
                 tokenHolder.set(accessToken)
-                try {
-                    val user = api.syncSession()
-                    persistSession(user, accessToken)
-                    _currentUser.value = user
-                    _authState.value = AuthState.Authenticated(user)
-                } catch (_: Exception) {
-                    // Token valid with Supabase but backend sync failed — still authenticated
-                    _authState.value = AuthState.Unauthenticated
+
+                // Don't re-sync if we already processed this token
+                if (accessToken == lastSyncedToken) return
+
+                syncMutex.withLock {
+                    // Double-check after acquiring lock
+                    if (accessToken == lastSyncedToken) return
+                    lastSyncedToken = accessToken
+
+                    try {
+                        val user = api.syncSession()
+                        persistSession(user, accessToken)
+                        _currentUser.value = user
+                        _authState.value = AuthState.Authenticated(user)
+                    } catch (e: Exception) {
+                        // Backend sync failed but Supabase session is valid.
+                        // Don't set Unauthenticated — that would trigger a loop.
+                        // Log and leave state as-is; the user can still use the app
+                        // once the backend is reachable.
+                        println("Backend session sync failed: ${e.message}")
+                    }
                 }
             }
             is SessionStatus.NotAuthenticated -> {
+                lastSyncedToken = null
                 if (_authState.value is AuthState.Authenticated || _authState.value is AuthState.Refreshing) {
                     clearLocal()
                 }
                 _authState.value = AuthState.Unauthenticated
             }
             is SessionStatus.RefreshFailure -> {
+                lastSyncedToken = null
                 clearLocal()
                 _authState.value = AuthState.Unauthenticated
             }
@@ -104,6 +124,7 @@ class AuthRepository(
     }
 
     suspend fun logout(): Unit = withContext(Dispatchers.Default) {
+        lastSyncedToken = null
         supabaseAuth?.signOut()
         clearLocal()
         _authState.value = AuthState.Unauthenticated
