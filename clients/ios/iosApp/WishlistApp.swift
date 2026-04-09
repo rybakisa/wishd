@@ -4,15 +4,11 @@ import Shared
 @main
 struct WishlistApp: App {
 
-    // Supabase config — replace with your project values
-    private static let supabaseUrl = "https://your-project.supabase.co"
-    private static let supabaseAnonKey = "your-anon-key"
-
     init() {
         KoinHelper.shared.start(
-            baseUrl: "http://localhost:4000",
-            supabaseUrl: Self.supabaseUrl,
-            supabaseAnonKey: Self.supabaseAnonKey,
+            baseUrl: Secrets.apiBaseUrl,
+            supabaseUrl: Secrets.supabaseUrl,
+            supabaseAnonKey: Secrets.supabaseAnonKey,
             callbackScheme: "com.wishlist.ios",
             callbackHost: "auth"
         )

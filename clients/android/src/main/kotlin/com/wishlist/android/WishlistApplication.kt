@@ -21,9 +21,9 @@ class WishlistApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         initKoin(
-            baseUrl = BASE_URL,
-            supabaseUrl = SUPABASE_URL,
-            supabaseAnonKey = SUPABASE_ANON_KEY,
+            baseUrl = BuildConfig.API_BASE_URL,
+            supabaseUrl = BuildConfig.SUPABASE_URL,
+            supabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY,
             callbackScheme = CALLBACK_SCHEME,
             callbackHost = CALLBACK_HOST,
         ) {
@@ -47,13 +47,6 @@ class WishlistApplication : Application() {
     }
 
     companion object {
-        // Android emulator maps host 127.0.0.1 to 10.0.2.2
-        const val BASE_URL = "http://10.0.2.2:4000"
-
-        // Supabase config — replace with your project values
-        const val SUPABASE_URL = "https://your-project.supabase.co"
-        const val SUPABASE_ANON_KEY = "your-anon-key"
-
         // OAuth redirect: com.wishlist.android://auth
         const val CALLBACK_SCHEME = "com.wishlist.android"
         const val CALLBACK_HOST = "auth"

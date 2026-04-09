@@ -1,7 +1,14 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.composeCompiler)
+}
+
+val secretsFile = rootProject.file("secrets.properties")
+val secrets = Properties().apply {
+    if (secretsFile.exists()) load(secretsFile.inputStream())
 }
 
 android {
@@ -14,10 +21,15 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField("String", "SUPABASE_URL", "\"${secrets.getProperty("SUPABASE_URL", "")}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secrets.getProperty("SUPABASE_ANON_KEY", "")}\"")
+        buildConfigField("String", "API_BASE_URL", "\"${secrets.getProperty("API_BASE_URL", "http://10.0.2.2:4000")}\"")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
