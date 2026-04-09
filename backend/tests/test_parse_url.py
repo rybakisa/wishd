@@ -1,4 +1,4 @@
-"""Unit tests for backend link parsing (parse_url.py).
+"""Unit tests for backend link parsing (services/url_parser.py).
 
 Covers:
 - Price parsing with various currency symbols and number formats
@@ -18,8 +18,9 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from app.parse_url import (
+from services.url_parser import (
     CURRENCY_SYMBOL,
+    ParsedProduct,
     _extract_jsonld,
     _image_from_product,
     _meta,
@@ -27,7 +28,6 @@ from app.parse_url import (
     _parse_price,
     parse_product_url,
 )
-from app.models import ParsedProduct
 from bs4 import BeautifulSoup
 
 
@@ -327,8 +327,8 @@ class _FakeAsyncClient:
 
 
 def _mock_parse(monkeypatch, html_text: str, *, status: int = 200):
-    """Replace httpx.AsyncClient in app.parse_url with a fake returning ``html_text``."""
-    import app.parse_url as mod
+    """Replace httpx.AsyncClient in services.url_parser with a fake returning ``html_text``."""
+    import services.url_parser as mod
     class _FakeHttpx:
         @staticmethod
         def AsyncClient(**kw):
@@ -459,11 +459,25 @@ class TestParseProductUrl:
 # /api/parse-url endpoint tests
 # ---------------------------------------------------------------------------
 class TestParseUrlEndpoint:
+    @pytest.fixture(autouse=True)
+    def _setup_runtime(self, pg_dsn):
+        from main import app
+        from runtime import RuntimeContainer
+        container = RuntimeContainer(database_url=pg_dsn, jwt_secret="test-secret-32-chars-long-enough!")
+        app.state.runtime = container
+        yield
+        container.close()
+
     @pytest.fixture
     def client(self):
         from fastapi.testclient import TestClient
-        from app.main import app
-        return TestClient(app)
+        from main import app
+        return TestClient(app, raise_server_exceptions=False)
+
+    def _mock_product_service(self, mock_fn):
+        """Replace the parse function on the ProductService instance."""
+        from main import app
+        app.state.runtime.product_service._parse_product_url = mock_fn
 
     def test_invalid_url_returns_400(self, client):
         resp = client.get("/api/parse-url", params={"url": "not-a-url"})
@@ -473,14 +487,12 @@ class TestParseUrlEndpoint:
         resp = client.get("/api/parse-url")
         assert resp.status_code == 422
 
-    def test_valid_url_format_accepted(self, client, monkeypatch):
+    def test_valid_url_format_accepted(self, client):
         """Valid URL format passes validation (mock the actual fetch)."""
-        from app.models import ParsedProduct
-
         async def mock_parse(url):
             return ParsedProduct(name="Test", url=url)
 
-        monkeypatch.setattr("app.main.parse_product_url", mock_parse)
+        self._mock_product_service(mock_parse)
         resp = client.get("/api/parse-url", params={"url": "https://example.com/product"})
         assert resp.status_code == 200
         data = resp.json()
@@ -489,22 +501,20 @@ class TestParseUrlEndpoint:
         # camelCase keys on the wire
         assert "imageUrl" in data or data.get("imageUrl") is None
 
-    def test_parse_failure_returns_502(self, client, monkeypatch):
+    def test_parse_failure_returns_502(self, client):
         async def mock_parse(url):
             raise RuntimeError("connection timeout")
 
-        monkeypatch.setattr("app.main.parse_product_url", mock_parse)
+        self._mock_product_service(mock_parse)
         resp = client.get("/api/parse-url", params={"url": "https://down.example.com"})
         assert resp.status_code == 502
 
-    def test_bare_domain_url_gets_https_prepended(self, client, monkeypatch):
+    def test_bare_domain_url_gets_https_prepended(self, client):
         """URLs without scheme (e.g. amazon.ae/...) get https:// auto-prepended."""
-        from app.models import ParsedProduct
-
         async def mock_parse(url):
             return ParsedProduct(name="WHOOP", url=url)
 
-        monkeypatch.setattr("app.main.parse_product_url", mock_parse)
+        self._mock_product_service(mock_parse)
         resp = client.get(
             "/api/parse-url",
             params={"url": "amazon.ae/WHOOP-Peak/dp/B0DY2SWV16/"},
@@ -513,26 +523,22 @@ class TestParseUrlEndpoint:
         data = resp.json()
         assert data["url"].startswith("https://")
 
-    def test_bare_domain_with_query_params(self, client, monkeypatch):
+    def test_bare_domain_with_query_params(self, client):
         """Bare domain + complex query string should still work."""
-        from app.models import ParsedProduct
-
         async def mock_parse(url):
             return ParsedProduct(name="Item", url=url)
 
-        monkeypatch.setattr("app.main.parse_product_url", mock_parse)
+        self._mock_product_service(mock_parse)
         raw = "amazon.ae/dp/B0DY2SWV16/?_encoding=UTF8&pd_rd_w=nwj9E"
         resp = client.get("/api/parse-url", params={"url": raw})
         assert resp.status_code == 200
 
-    def test_http_scheme_preserved(self, client, monkeypatch):
+    def test_http_scheme_preserved(self, client):
         """Explicit http:// should not be changed to https://."""
-        from app.models import ParsedProduct
-
         async def mock_parse(url):
             return ParsedProduct(name="HTTP", url=url)
 
-        monkeypatch.setattr("app.main.parse_product_url", mock_parse)
+        self._mock_product_service(mock_parse)
         resp = client.get("/api/parse-url", params={"url": "http://example.com/item"})
         assert resp.status_code == 200
         assert resp.json()["url"].startswith("http://")

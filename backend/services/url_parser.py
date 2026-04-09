@@ -11,8 +11,7 @@ from typing import Optional, Tuple
 
 import httpx
 from bs4 import BeautifulSoup
-
-from app.models import ParsedProduct
+from pydantic import BaseModel, ConfigDict
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -36,6 +35,22 @@ PRICE_REGEX = re.compile(
     r"(?P<sym>[$€£¥₽₹]|US\$|C\$|A\$|USD|EUR|GBP|JPY|RUB|CAD|AUD|CHF|INR|CNY|RMB)\s*(?P<num>[\d.,]+)"
     r"|(?P<num2>[\d.,]+)\s*(?P<sym2>USD|EUR|GBP|JPY|RUB|CAD|AUD|CHF|INR|CNY|RMB)"
 )
+
+
+def _camel(s: str) -> str:
+    parts = s.split("_")
+    return parts[0] + "".join(p.title() for p in parts[1:])
+
+
+class ParsedProduct(BaseModel):
+    model_config = ConfigDict(alias_generator=_camel, populate_by_name=True)
+
+    name: str
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    price: Optional[float] = None
+    currency: Optional[str] = None
+    url: str
 
 
 def _parse_price(text: str) -> Tuple[Optional[float], Optional[str]]:

@@ -1,11 +1,8 @@
-"""Request/response DTOs. Snake_case in DB, camelCase on the wire for KMP clients."""
-from typing import List, Optional, Literal
+from __future__ import annotations
+
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
-CoverType = Literal["none", "emoji", "image"]
-Access = Literal["link", "public", "private"]
-Provider = Literal["apple", "google", "email"]
 
 
 def _camel(s: str) -> str:
@@ -17,15 +14,9 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(alias_generator=_camel, populate_by_name=True)
 
 
-class User(CamelModel):
-    id: str
-    email: str
-    display_name: str
-    avatar_url: Optional[str] = None
-    provider: Provider
+# -- Item schemas --
 
-
-class WishlistItem(CamelModel):
+class WishlistItemResponse(CamelModel):
     id: str
     wishlist_id: str
     name: str
@@ -40,7 +31,7 @@ class WishlistItem(CamelModel):
     created_at: Optional[str] = None
 
 
-class WishlistItemCreate(CamelModel):
+class WishlistItemCreateCommand(CamelModel):
     name: str
     url: Optional[str] = None
     image_url: Optional[str] = None
@@ -52,7 +43,7 @@ class WishlistItemCreate(CamelModel):
     sort_order: int = 0
 
 
-class WishlistItemUpdate(CamelModel):
+class WishlistItemUpdateCommand(CamelModel):
     name: Optional[str] = None
     url: Optional[str] = None
     image_url: Optional[str] = None
@@ -64,36 +55,29 @@ class WishlistItemUpdate(CamelModel):
     sort_order: Optional[int] = None
 
 
-class Wishlist(CamelModel):
+# -- Wishlist schemas --
+
+class WishlistResponse(CamelModel):
     id: str
     owner_id: str
     name: str
-    cover_type: CoverType = "none"
+    cover_type: Literal["none", "emoji", "image"] = "none"
     cover_value: Optional[str] = None
-    access: Access = "link"
+    access: Literal["link", "public", "private"] = "link"
     share_token: str
     created_at: Optional[str] = None
-    items: List[WishlistItem] = Field(default_factory=list)
+    items: list[WishlistItemResponse] = Field(default_factory=list)
 
 
-class WishlistCreate(CamelModel):
+class WishlistCreateCommand(CamelModel):
     name: str
-    cover_type: CoverType = "none"
+    cover_type: Literal["none", "emoji", "image"] = "none"
     cover_value: Optional[str] = None
-    access: Access = "link"
+    access: Literal["link", "public", "private"] = "link"
 
 
-class WishlistUpdate(CamelModel):
+class WishlistUpdateCommand(CamelModel):
     name: Optional[str] = None
-    cover_type: Optional[CoverType] = None
+    cover_type: Optional[Literal["none", "emoji", "image"]] = None
     cover_value: Optional[str] = None
-    access: Optional[Access] = None
-
-
-class ParsedProduct(CamelModel):
-    name: str
-    description: Optional[str] = None
-    image_url: Optional[str] = None
-    price: Optional[float] = None
-    currency: Optional[str] = None
-    url: str
+    access: Optional[Literal["link", "public", "private"]] = None

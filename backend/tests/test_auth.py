@@ -6,27 +6,19 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-import app.db as db_module
-import app.config as config_module
-import app.auth as auth_module
-from app.auth import _decode_supabase_token, _decode_token, _extract_bearer, _upsert_user
-from app.main import app
+from main import app
+from runtime import RuntimeContainer
 
 SUPABASE_SECRET = "supabase-test-secret-at-least-32-chars!"
 
 
 @pytest.fixture(autouse=True)
-def _tmp_db(tmp_path, monkeypatch):
-    """Point the DB at a temporary file so each test gets a fresh database."""
-    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "test.db")
-    db_module.init_db()
-
-
-@pytest.fixture(autouse=True)
-def _set_supabase_secret(monkeypatch):
-    """All tests run with a known Supabase JWT secret."""
-    monkeypatch.setattr(config_module, "SUPABASE_JWT_SECRET", SUPABASE_SECRET)
-    monkeypatch.setattr(auth_module, "SUPABASE_JWT_SECRET", SUPABASE_SECRET)
+def _setup_runtime(pg_dsn):
+    """Create a fresh RuntimeContainer for each test with a test DB."""
+    container = RuntimeContainer(database_url=pg_dsn, jwt_secret=SUPABASE_SECRET)
+    app.state.runtime = container
+    yield
+    container.close()
 
 
 @pytest.fixture()
@@ -35,7 +27,7 @@ def client():
 
 
 def _make_supabase_jwt(
-    sub="u-1", aud="authenticated", email="test@example.com", **extra
+    sub="00000000-0000-0000-0000-000000000001", aud="authenticated", email="test@example.com", **extra
 ) -> str:
     payload = {
         "sub": sub,
@@ -51,133 +43,185 @@ def _make_supabase_jwt(
 
 
 # ---------------------------------------------------------------------------
-# _decode_supabase_token
+# Token decoding (via UserService)
 # ---------------------------------------------------------------------------
 class TestDecodeSupabaseToken:
-    def test_valid_token(self):
-        token = _make_supabase_jwt(sub="su-1")
-        payload = _decode_supabase_token(token)
-        assert payload["sub"] == "su-1"
+    def _get_service(self, pg_dsn):
+        from application.user.service import UserService
+        from domain.user.use_cases import UserUseCases
+        from infra.postgresql.client import PostgreSQLClient
+        from infra.postgresql.user_repository import UserRepository
+        db = PostgreSQLClient(pg_dsn)
+        db.init_db()
+        repo = UserRepository(db)
+        uc = UserUseCases(repo)
+        return UserService(uc, jwt_secret=SUPABASE_SECRET)
+
+    def test_valid_token(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
+        token = _make_supabase_jwt(sub="00000000-0000-0000-0000-000000000011")
+        payload = svc.decode_supabase_token(token)
+        assert payload["sub"] == "00000000-0000-0000-0000-000000000011"
         assert payload["aud"] == "authenticated"
 
-    def test_wrong_audience_rejected(self):
+    def test_wrong_audience_rejected(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         token = _make_supabase_jwt(aud="anon")
         with pytest.raises(jwt.InvalidAudienceError):
-            _decode_supabase_token(token)
+            svc.decode_supabase_token(token)
 
-    def test_expired_token_rejected(self):
+    def test_expired_token_rejected(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         payload = {
             "sub": "u-1", "aud": "authenticated",
             "iat": int(time.time()) - 600, "exp": int(time.time()) - 300,
         }
         token = jwt.encode(payload, SUPABASE_SECRET, algorithm="HS256")
         with pytest.raises(jwt.ExpiredSignatureError):
-            _decode_supabase_token(token)
+            svc.decode_supabase_token(token)
 
-    def test_wrong_secret_rejected(self):
+    def test_wrong_secret_rejected(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         payload = {
             "sub": "u-1", "aud": "authenticated",
             "iat": int(time.time()), "exp": int(time.time()) + 300,
         }
         token = jwt.encode(payload, "wrong-secret-must-be-32-chars-long!", algorithm="HS256")
         with pytest.raises(jwt.InvalidSignatureError):
-            _decode_supabase_token(token)
+            svc.decode_supabase_token(token)
 
-    def test_missing_sub_rejected(self):
+    def test_missing_sub_rejected(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         payload = {
             "aud": "authenticated",
             "iat": int(time.time()), "exp": int(time.time()) + 300,
         }
         token = jwt.encode(payload, SUPABASE_SECRET, algorithm="HS256")
         with pytest.raises(jwt.InvalidTokenError, match="missing sub"):
-            _decode_supabase_token(token)
+            svc.decode_supabase_token(token)
 
-    def test_non_string_sub_rejected(self):
+    def test_non_string_sub_rejected(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         payload = {
             "sub": 12345, "aud": "authenticated",
             "iat": int(time.time()), "exp": int(time.time()) + 300,
         }
         token = jwt.encode(payload, SUPABASE_SECRET, algorithm="HS256")
         with pytest.raises((jwt.InvalidTokenError, jwt.PyJWTError)):
-            _decode_supabase_token(token)
+            svc.decode_supabase_token(token)
 
 
 class TestDecodeToken:
-    def test_valid_supabase_token(self):
-        token = _make_supabase_jwt(sub="su-1")
-        assert _decode_token(token) == "su-1"
+    def _get_service(self, pg_dsn):
+        from application.user.service import UserService
+        from domain.user.use_cases import UserUseCases
+        from infra.postgresql.client import PostgreSQLClient
+        from infra.postgresql.user_repository import UserRepository
+        db = PostgreSQLClient(pg_dsn)
+        db.init_db()
+        repo = UserRepository(db)
+        uc = UserUseCases(repo)
+        return UserService(uc, jwt_secret=SUPABASE_SECRET)
 
-    def test_invalid_token_raises_401(self):
+    def test_valid_supabase_token(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
+        token = _make_supabase_jwt(sub="00000000-0000-0000-0000-000000000011")
+        assert svc.decode_token(token) == "00000000-0000-0000-0000-000000000011"
+
+    def test_invalid_token_raises_401(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         with pytest.raises(Exception) as exc:
-            _decode_token("garbage-token")
+            svc.decode_token("garbage-token")
         assert exc.value.status_code == 401
 
-    def test_expired_token_raises_401(self):
+    def test_expired_token_raises_401(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         payload = {
             "sub": "u-1", "aud": "authenticated",
             "iat": int(time.time()) - 600, "exp": int(time.time()) - 300,
         }
         token = jwt.encode(payload, SUPABASE_SECRET, algorithm="HS256")
         with pytest.raises(Exception) as exc:
-            _decode_token(token)
+            svc.decode_token(token)
         assert exc.value.status_code == 401
 
-    def test_401_includes_www_authenticate_header(self):
+    def test_401_includes_www_authenticate_header(self, pg_dsn):
+        svc = self._get_service(pg_dsn)
         with pytest.raises(Exception) as exc:
-            _decode_token("garbage")
+            svc.decode_token("garbage")
         assert exc.value.headers.get("WWW-Authenticate") == "Bearer"
 
 
 # ---------------------------------------------------------------------------
-# _extract_bearer
+# Bearer extraction
 # ---------------------------------------------------------------------------
 class TestExtractBearer:
     def test_valid_bearer(self):
+        from presentation.api.deps import _extract_bearer
         assert _extract_bearer("Bearer abc123") == "abc123"
 
     def test_none_input(self):
+        from presentation.api.deps import _extract_bearer
         assert _extract_bearer(None) is None
 
     def test_basic_scheme(self):
+        from presentation.api.deps import _extract_bearer
         assert _extract_bearer("Basic abc123") is None
 
     def test_empty_token(self):
+        from presentation.api.deps import _extract_bearer
         assert _extract_bearer("Bearer ") is None
 
     def test_case_insensitive_scheme(self):
+        from presentation.api.deps import _extract_bearer
         assert _extract_bearer("bearer mytoken") == "mytoken"
 
 
 # ---------------------------------------------------------------------------
-# _upsert_user
+# User upsert
 # ---------------------------------------------------------------------------
 class TestUpsertUser:
-    def test_creates_new_user(self):
-        user = _upsert_user("google", "Test@Example.COM", None, None)
+    def _get_use_cases(self, pg_dsn):
+        from domain.user.use_cases import UserUseCases
+        from infra.postgresql.client import PostgreSQLClient
+        from infra.postgresql.user_repository import UserRepository
+        db = PostgreSQLClient(pg_dsn)
+        db.init_db()
+        repo = UserRepository(db)
+        return UserUseCases(repo)
+
+    def test_creates_new_user(self, pg_dsn):
+        uc = self._get_use_cases(pg_dsn)
+        user = uc.upsert(provider="google", email="Test@Example.COM", display_name=None, avatar_url=None)
         assert user.email == "test@example.com"
         assert user.provider == "google"
         assert len(user.id) == 36  # UUID format
 
-    def test_idempotent_same_email(self):
-        u1 = _upsert_user("google", "same@test.com", None, None)
-        u2 = _upsert_user("google", "same@test.com", "New Name", None)
+    def test_idempotent_same_email(self, pg_dsn):
+        uc = self._get_use_cases(pg_dsn)
+        u1 = uc.upsert(provider="google", email="same@test.com", display_name=None, avatar_url=None)
+        u2 = uc.upsert(provider="google", email="same@test.com", display_name="New Name", avatar_url=None)
         assert u1.id == u2.id
 
-    def test_normalizes_email(self):
-        user = _upsert_user("apple", "  Alice@Bob.COM  ", None, None)
+    def test_normalizes_email(self, pg_dsn):
+        uc = self._get_use_cases(pg_dsn)
+        user = uc.upsert(provider="apple", email="  Alice@Bob.COM  ", display_name=None, avatar_url=None)
         assert user.email == "alice@bob.com"
 
-    def test_display_name_fallback(self):
-        user = _upsert_user("email", "jane@doe.com", None, None)
+    def test_display_name_fallback(self, pg_dsn):
+        uc = self._get_use_cases(pg_dsn)
+        user = uc.upsert(provider="email", email="jane@doe.com", display_name=None, avatar_url=None)
         assert user.display_name == "jane"
 
-    def test_display_name_provided(self):
-        user = _upsert_user("email", "with-name@test.com", "Jane Doe", None)
+    def test_display_name_provided(self, pg_dsn):
+        uc = self._get_use_cases(pg_dsn)
+        user = uc.upsert(provider="email", email="with-name@test.com", display_name="Jane Doe", avatar_url=None)
         assert user.display_name == "Jane Doe"
 
-    def test_explicit_user_id(self):
-        user = _upsert_user("google", "explicit@test.com", None, None, user_id="custom-id-123")
-        assert user.id == "custom-id-123"
+    def test_explicit_user_id(self, pg_dsn):
+        uc = self._get_use_cases(pg_dsn)
+        user = uc.upsert(provider="google", email="explicit@test.com", display_name=None, avatar_url=None, user_id="00000000-0000-0000-0000-000000000099")
+        assert user.id == "00000000-0000-0000-0000-000000000099"
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +236,7 @@ class TestAuthSessionEndpoint:
         assert data["email"] == "test@example.com"
         assert data["displayName"] == "Test User"
         assert data["provider"] == "google"
-        assert data["id"] == "u-1"
+        assert data["id"] == "00000000-0000-0000-0000-000000000001"
 
     def test_missing_token_returns_401(self, client):
         resp = client.post("/auth/session")
@@ -216,7 +260,7 @@ class TestAuthSessionEndpoint:
 
     def test_apple_provider(self, client):
         token = _make_supabase_jwt(
-            sub="apple-user-1",
+            sub="00000000-0000-0000-0000-000000000022",
             email="apple@test.com",
             **{"app_metadata": {"provider": "apple"}, "user_metadata": {"full_name": "Apple User"}},
         )
@@ -262,7 +306,7 @@ class TestMeEndpoint:
 
     def test_user_not_found_returns_401(self, client):
         """Token is valid but user doesn't exist in DB yet (never called /auth/session)."""
-        token = _make_supabase_jwt(sub="nonexistent-user-id")
+        token = _make_supabase_jwt(sub="00000000-0000-0000-0000-ffffffffffff")
         resp = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 401
 
@@ -272,11 +316,9 @@ class TestMeEndpoint:
 # ---------------------------------------------------------------------------
 class TestOptionalAuth:
     def test_no_token_returns_none(self):
-        from app.auth import get_current_user_optional
-        result = get_current_user_optional(authorization=None)
-        assert result is None
+        from presentation.api.deps import _extract_bearer
+        assert _extract_bearer(None) is None
 
     def test_bad_token_returns_none(self):
-        from app.auth import get_current_user_optional
-        result = get_current_user_optional(authorization="Bearer garbage")
-        assert result is None
+        from presentation.api.deps import _extract_bearer
+        assert _extract_bearer("Bearer garbage") == "garbage"

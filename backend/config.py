@@ -1,9 +1,12 @@
 """Centralised configuration loaded from environment variables."""
 import os
 
-SUPABASE_URL: str = os.environ.get("SUPABASE_URL", "")
+DATABASE_URL: str = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://wishlist:wishlist@localhost:5432/wishlist",
+)
+
 SUPABASE_JWT_SECRET: str = os.environ.get("SUPABASE_JWT_SECRET", "")
-SUPABASE_ANON_KEY: str = os.environ.get("SUPABASE_ANON_KEY", "")
 
 # CORS origins (comma-separated). Default allows local dev.
 CORS_ORIGINS: list[str] = [
