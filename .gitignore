@@ -6,6 +6,10 @@
 .env*.local
 .env
 
+# Secrets (Supabase keys, API URLs)
+**/secrets.properties
+**/Secrets.swift
+
 # Gradle
 **/.gradle/
 **/build/
