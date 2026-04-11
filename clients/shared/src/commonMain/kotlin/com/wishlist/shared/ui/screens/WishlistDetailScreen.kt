@@ -37,7 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.wishlist.shared.data.WishlistItem
-import com.wishlist.shared.ui.navigation.Routes
+import com.wishlist.shared.ui.navigation.AddItem
 import com.wishlist.shared.ui.platform.LocalPlatformActions
 import com.wishlist.shared.ui.viewmodel.WishlistDetailViewModel
 import org.koin.compose.viewmodel.koinViewModel
@@ -77,7 +77,7 @@ fun WishlistDetailScreen(wishlistId: String, nav: NavHostController) {
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { nav.navigate(Routes.addItem(wishlistId)) },
+                onClick = { nav.navigate(AddItem(wishlistId = wishlistId)) },
                 containerColor = MaterialTheme.colorScheme.primary,
             ) { Icon(Icons.Default.Add, null) }
         },

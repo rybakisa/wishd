@@ -6,6 +6,7 @@ import com.wishlist.shared.auth.AuthRepository
 import com.wishlist.shared.auth.AuthState
 import com.wishlist.shared.data.AuthUser
 import com.wishlist.shared.network.WishlistApiClient
+import com.wishlist.shared.ui.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,7 +39,7 @@ class AuthViewModel(
             _error.value = null
             runCatching { auth.signInWithGoogle() }
                 .onSuccess { onDone() }
-                .onFailure { _error.value = it.message }
+                .onFailure { _error.value = it.toUserMessage() }
             _busy.value = false
         }
     }
@@ -49,7 +50,7 @@ class AuthViewModel(
             _error.value = null
             runCatching { auth.signInWithApple() }
                 .onSuccess { onDone() }
-                .onFailure { _error.value = it.message }
+                .onFailure { _error.value = it.toUserMessage() }
             _busy.value = false
         }
     }

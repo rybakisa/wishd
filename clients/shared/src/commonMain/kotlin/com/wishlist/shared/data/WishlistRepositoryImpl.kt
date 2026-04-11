@@ -5,6 +5,7 @@ import app.cash.sqldelight.coroutines.mapToList
 import com.wishlist.shared.domain.WishlistRepository
 import com.wishlist.shared.network.WishlistApiClient
 import com.wishlist.shared.storage.WishlistDatabase
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -13,6 +14,7 @@ import kotlinx.coroutines.withContext
 class WishlistRepositoryImpl(
     private val api: WishlistApiClient,
     private val db: WishlistDatabase,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : WishlistRepository {
 
     private val q = db.wishlistQueries
@@ -20,15 +22,16 @@ class WishlistRepositoryImpl(
     override fun observeWishlists(ownerId: String): Flow<List<Wishlist>> =
         q.selectWishlistsByOwner(ownerId)
             .asFlow()
-            .mapToList(Dispatchers.Default)
+            .mapToList(dispatcher)
             .map { rows ->
+                val allItems = q.selectItemsByOwner(ownerId).executeAsList()
+                val itemsByWishlist = allItems.groupBy { it.wishlist_id }
                 rows.map { row ->
-                    val items = q.selectItemsByWishlist(row.id).executeAsList().map { it.toDomain() }
-                    row.toDomain(items)
+                    row.toDomain(itemsByWishlist[row.id]?.map { it.toDomain() } ?: emptyList())
                 }
             }
 
-    override suspend fun getWishlist(id: String): Wishlist? = withContext(Dispatchers.Default) {
+    override suspend fun getWishlist(id: String): Wishlist? = withContext(dispatcher) {
         q.selectWishlistById(id).executeAsOneOrNull()?.let { row ->
             val items = q.selectItemsByWishlist(id).executeAsList().map { it.toDomain() }
             row.toDomain(items)
@@ -37,7 +40,7 @@ class WishlistRepositoryImpl(
 
     override suspend fun createWishlist(
         name: String, coverType: CoverType, coverValue: String?, access: Access,
-    ): Wishlist = withContext(Dispatchers.Default) {
+    ): Wishlist = withContext(dispatcher) {
         val created = api.createWishlist(WishlistCreateRequest(name, coverType, coverValue, access))
         upsertWishlist(created)
         created
@@ -45,38 +48,38 @@ class WishlistRepositoryImpl(
 
     override suspend fun updateWishlist(
         id: String, name: String?, coverType: CoverType?, coverValue: String?, access: Access?,
-    ): Wishlist = withContext(Dispatchers.Default) {
+    ): Wishlist = withContext(dispatcher) {
         val updated = api.updateWishlist(id, WishlistUpdateRequest(name, coverType, coverValue, access))
         upsertWishlist(updated)
         updated
     }
 
-    override suspend fun deleteWishlist(id: String): Unit = withContext(Dispatchers.Default) {
+    override suspend fun deleteWishlist(id: String): Unit = withContext(dispatcher) {
         api.deleteWishlist(id)
         q.deleteWishlist(id)
     }
 
     override suspend fun createItem(wishlistId: String, req: ItemCreateRequest): WishlistItem =
-        withContext(Dispatchers.Default) {
+        withContext(dispatcher) {
             val created = api.createItem(wishlistId, req)
             upsertItem(created)
             created
         }
 
     override suspend fun updateItem(wishlistId: String, itemId: String, req: ItemUpdateRequest): WishlistItem =
-        withContext(Dispatchers.Default) {
+        withContext(dispatcher) {
             val updated = api.updateItem(wishlistId, itemId, req)
             upsertItem(updated)
             updated
         }
 
     override suspend fun deleteItem(wishlistId: String, itemId: String): Unit =
-        withContext(Dispatchers.Default) {
+        withContext(dispatcher) {
             api.deleteItem(wishlistId, itemId)
             q.deleteItem(itemId)
         }
 
-    override suspend fun refresh(ownerId: String): Unit = withContext(Dispatchers.Default) {
+    override suspend fun refresh(ownerId: String): Unit = withContext(dispatcher) {
         val remote = api.getWishlists()
         q.transaction {
             remote.forEach { w ->
@@ -92,11 +95,11 @@ class WishlistRepositoryImpl(
         }
     }
 
-    override suspend fun getShared(token: String): Wishlist = withContext(Dispatchers.Default) {
+    override suspend fun getShared(token: String): Wishlist = withContext(dispatcher) {
         api.getShared(token)
     }
 
-    override suspend fun parseProductUrl(url: String): ParsedProduct = withContext(Dispatchers.Default) {
+    override suspend fun parseProductUrl(url: String): ParsedProduct = withContext(dispatcher) {
         api.parseUrl(url)
     }
 

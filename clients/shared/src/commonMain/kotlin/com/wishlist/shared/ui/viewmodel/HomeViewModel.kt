@@ -6,6 +6,7 @@ import com.wishlist.shared.auth.AuthRepository
 import com.wishlist.shared.data.AuthUser
 import com.wishlist.shared.data.Wishlist
 import com.wishlist.shared.domain.WishlistRepository
+import com.wishlist.shared.ui.toUserMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +37,7 @@ class HomeViewModel(
                 val userId = user?.id ?: AuthRepository.ANON_USER_ID
                 repo.observeWishlists(userId)
             }
-            .catch { _error.value = it.message }
+            .catch { _error.value = it.toUserMessage() }
             .onEach { _wishlists.value = it }
             .launchIn(viewModelScope)
 
@@ -47,13 +48,13 @@ class HomeViewModel(
         viewModelScope.launch {
             val user = auth.currentUser.value ?: return@launch
             runCatching { repo.refresh(user.id) }
-                .onFailure { _error.value = it.message }
+                .onFailure { _error.value = it.toUserMessage() }
         }
     }
 
     fun delete(id: String) {
         viewModelScope.launch {
-            runCatching { repo.deleteWishlist(id) }.onFailure { _error.value = it.message }
+            runCatching { repo.deleteWishlist(id) }.onFailure { _error.value = it.toUserMessage() }
         }
     }
 

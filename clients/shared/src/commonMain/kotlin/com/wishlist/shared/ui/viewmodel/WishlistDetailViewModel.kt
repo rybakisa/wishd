@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.wishlist.shared.data.Wishlist
 import com.wishlist.shared.domain.WishlistRepository
+import com.wishlist.shared.ui.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,7 +25,7 @@ class WishlistDetailViewModel(
         viewModelScope.launch {
             runCatching { repo.getWishlist(wishlistId) }
                 .onSuccess { _wishlist.value = it }
-                .onFailure { _error.value = it.message }
+                .onFailure { _error.value = it.toUserMessage() }
         }
     }
 
@@ -32,7 +33,7 @@ class WishlistDetailViewModel(
         viewModelScope.launch {
             runCatching { repo.deleteItem(wishlistId, itemId) }
                 .onSuccess { load() }
-                .onFailure { _error.value = it.message }
+                .onFailure { _error.value = it.toUserMessage() }
         }
     }
 }

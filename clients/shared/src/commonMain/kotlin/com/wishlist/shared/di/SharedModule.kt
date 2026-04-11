@@ -13,6 +13,7 @@ import com.wishlist.shared.ui.viewmodel.HomeViewModel
 import com.wishlist.shared.ui.viewmodel.WishlistDetailViewModel
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
+import org.koin.core.module.dsl.onClose
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.KoinAppDeclaration
 import org.koin.dsl.module
@@ -33,7 +34,11 @@ fun sharedModule(
         }
     }
     single { WishlistApiClient(baseUrl, get(), supabaseAuth = get()) }
-    single { AuthRepository(get(), get(), get(), supabaseAuth = get()) }
+    single {
+        AuthRepository(get(), get(), get(), supabaseAuth = get())
+    } withOptions {
+        onClose { it?.close() }
+    }
     single<WishlistRepository> { WishlistRepositoryImpl(get(), get()) }
 
     // ViewModels

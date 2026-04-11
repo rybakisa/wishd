@@ -113,6 +113,7 @@ sqldelight {
     databases {
         create("WishlistDatabase") {
             packageName.set("com.wishlist.shared.storage")
+            verifyMigrations.set(true)
         }
     }
 }

@@ -5,9 +5,11 @@ import com.wishlist.shared.data.AuthUser
 import com.wishlist.shared.network.WishlistApiClient
 import com.wishlist.shared.storage.WishlistDatabase
 import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +23,7 @@ class AuthRepository(
     private val db: WishlistDatabase,
     private val tokenHolder: AuthTokenHolder,
     private val supabaseAuth: SupabaseAuthManager? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unknown)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
@@ -28,7 +31,7 @@ class AuthRepository(
     private val _currentUser = MutableStateFlow<AuthUser?>(null)
     val currentUser: StateFlow<AuthUser?> = _currentUser.asStateFlow()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val syncMutex = Mutex()
 
     /** Token that was last successfully synced or attempted — prevents retry loops. */
@@ -90,8 +93,12 @@ class AuthRepository(
         }
     }
 
+    fun close() {
+        scope.cancel()
+    }
+
     /** Load persisted session on app start. */
-    suspend fun restore(): AuthUser? = withContext(Dispatchers.Default) {
+    suspend fun restore(): AuthUser? = withContext(dispatcher) {
         val row = db.wishlistQueries.selectSession().executeAsOneOrNull() ?: run {
             _authState.value = AuthState.Unauthenticated
             return@withContext null
@@ -123,7 +130,7 @@ class AuthRepository(
             ?: throw IllegalStateException("Supabase auth not configured")
     }
 
-    suspend fun logout(): Unit = withContext(Dispatchers.Default) {
+    suspend fun logout(): Unit = withContext(dispatcher) {
         lastSyncedToken = null
         supabaseAuth?.signOut()
         clearLocal()

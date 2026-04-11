@@ -44,7 +44,9 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.wishlist.shared.data.CoverType
 import com.wishlist.shared.data.Wishlist
-import com.wishlist.shared.ui.navigation.Routes
+import com.wishlist.shared.ui.navigation.Auth
+import com.wishlist.shared.ui.navigation.Create
+import com.wishlist.shared.ui.navigation.Detail
 import com.wishlist.shared.ui.viewmodel.HomeViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -62,7 +64,7 @@ fun HomeScreen(nav: NavHostController) {
                 title = { Text("Wishlists", fontWeight = FontWeight.Bold) },
                 actions = {
                     if (user == null) {
-                        TextButton(onClick = { nav.navigate(Routes.AUTH) }) { Text("Sign in") }
+                        TextButton(onClick = { nav.navigate(Auth) }) { Text("Sign in") }
                     } else {
                         TextButton(onClick = { vm.refresh() }) { Text("Refresh") }
                     }
@@ -75,7 +77,7 @@ fun HomeScreen(nav: NavHostController) {
         floatingActionButton = {
             if (wishlists.isNotEmpty()) {
                 FloatingActionButton(
-                    onClick = { nav.navigate(Routes.CREATE) },
+                    onClick = { nav.navigate(Create) },
                     containerColor = MaterialTheme.colorScheme.primary,
                 ) { Icon(Icons.Default.Add, null) }
             }
@@ -83,7 +85,7 @@ fun HomeScreen(nav: NavHostController) {
         containerColor = MaterialTheme.colorScheme.background,
     ) { inner ->
         if (wishlists.isEmpty()) {
-            EmptyHome(onAdd = { nav.navigate(Routes.CREATE) }, paddingValues = inner)
+            EmptyHome(onAdd = { nav.navigate(Create) }, paddingValues = inner)
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(inner),
@@ -91,7 +93,7 @@ fun HomeScreen(nav: NavHostController) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(wishlists, key = { it.id }) { w ->
-                    WishlistCard(w, onClick = { nav.navigate(Routes.detail(w.id)) })
+                    WishlistCard(w, onClick = { nav.navigate(Detail(id = w.id)) })
                 }
             }
         }

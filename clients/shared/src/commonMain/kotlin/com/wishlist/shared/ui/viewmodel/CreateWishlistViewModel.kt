@@ -6,6 +6,7 @@ import com.wishlist.shared.auth.AuthRepository
 import com.wishlist.shared.data.Access
 import com.wishlist.shared.data.CoverType
 import com.wishlist.shared.domain.WishlistRepository
+import com.wishlist.shared.ui.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,7 +32,7 @@ class CreateWishlistViewModel(
             _error.value = null
             runCatching { repo.createWishlist(name, coverType, coverValue?.ifBlank { null }, access) }
                 .onSuccess { onSuccess(it.id) }
-                .onFailure { _error.value = it.message }
+                .onFailure { _error.value = it.toUserMessage() }
             _busy.value = false
         }
     }

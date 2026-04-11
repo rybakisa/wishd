@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.wishlist.shared.data.ItemCreateRequest
 import com.wishlist.shared.data.ParsedProduct
 import com.wishlist.shared.domain.WishlistRepository
+import com.wishlist.shared.ui.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,7 +29,7 @@ class AddItemViewModel(
             _error.value = null
             runCatching { repo.parseProductUrl(url) }
                 .onSuccess { _parsed.value = it }
-                .onFailure { _error.value = "Could not parse URL: ${it.message}" }
+                .onFailure { _error.value = "Could not parse URL: ${it.toUserMessage()}" }
             _busy.value = false
         }
     }
@@ -39,7 +40,7 @@ class AddItemViewModel(
             _error.value = null
             runCatching { repo.createItem(wishlistId, req) }
                 .onSuccess { onDone() }
-                .onFailure { _error.value = it.message }
+                .onFailure { _error.value = it.toUserMessage() }
             _busy.value = false
         }
     }

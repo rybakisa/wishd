@@ -45,7 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.wishlist.shared.data.Access
 import com.wishlist.shared.data.CoverType
-import com.wishlist.shared.ui.navigation.Routes
+import com.wishlist.shared.ui.navigation.Auth
+import com.wishlist.shared.ui.navigation.Detail
 import com.wishlist.shared.ui.viewmodel.CreateWishlistViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -70,7 +71,7 @@ fun CreateWishlistScreen(nav: NavHostController) {
     var access by rememberSaveable { mutableStateOf(Access.LINK) }
 
     LaunchedEffect(Unit) {
-        if (vm.requiresLogin()) nav.navigate(Routes.AUTH)
+        if (vm.requiresLogin()) nav.navigate(Auth)
     }
 
     Scaffold(
@@ -148,7 +149,7 @@ fun CreateWishlistScreen(nav: NavHostController) {
                     }
                     vm.create(name.trim(), coverType, v, access) { id ->
                         nav.popBackStack()
-                        nav.navigate(Routes.detail(id))
+                        nav.navigate(Detail(id = id))
                     }
                 },
                 enabled = !busy && name.isNotBlank(),
