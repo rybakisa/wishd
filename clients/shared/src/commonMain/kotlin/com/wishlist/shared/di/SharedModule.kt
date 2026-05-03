@@ -15,6 +15,7 @@ import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.onClose
 import org.koin.core.module.dsl.viewModel
+import org.koin.core.module.dsl.withOptions
 import org.koin.dsl.KoinAppDeclaration
 import org.koin.dsl.module
 
